@@ -1,4 +1,4 @@
-import { Construct } from "constructs";
+import { Construct, IConstruct } from "constructs";
 import * as fs from "fs";
 import { version } from "../package.json";
 import { DISABLE_STACK_TRACE_IN_METADATA } from "./annotations";
@@ -6,6 +6,7 @@ import { Manifest } from "./manifest";
 import { ISynthesisSession } from "./synthesize";
 import { TerraformStack } from "./terraform-stack";
 
+const APP_SYMBOL = Symbol.for("cdktf/App");
 export const CONTEXT_ENV = "CDKTF_CONTEXT_JSON";
 export interface AppOptions {
   /**
@@ -79,6 +80,31 @@ export class App extends Construct {
       fs.mkdirSync(this.outdir);
     }
     this.manifest = new Manifest(version, this.outdir);
+    Object.defineProperty(this, APP_SYMBOL, { value: true });
+  }
+
+  public static isApp(x: any): x is App {
+    return x !== null && typeof x === "object" && APP_SYMBOL in x;
+  }
+
+  public static of(construct: IConstruct): App {
+    return _lookup(construct);
+
+    function _lookup(c: IConstruct): App {
+      if (App.isApp(c)) {
+        return c;
+      }
+
+      const node = c.node;
+
+      if (!node.scope) {
+        throw new Error(
+          `No app could be identified for the construct at path '${construct.node.path}'`
+        );
+      }
+
+      return _lookup(node.scope);
+    }
   }
 
   /**
@@ -97,6 +123,7 @@ export class App extends Construct {
         (c): c is TerraformStack => c instanceof TerraformStack
       );
 
+    stacks.forEach((stack) => stack.prepareStack());
     stacks.forEach((stack) => stack.synthesizer.synthesize(session));
 
     this.manifest.writeToFile();
@@ -117,5 +144,24 @@ export class App extends Construct {
     for (const [k, v] of Object.entries(contextFromEnvironment)) {
       node.setContext(k, v);
     }
+  }
+
+  public crossStackReference(
+    fromStack: TerraformStack,
+    toStack: TerraformStack,
+    identifier: string
+  ): string {
+    // TODO: add edge in inter-stack dependency graph
+    // Check here for loops
+    // Add output to fromStack
+    const outputId =
+      fromStack.registerOutgoingCrossStackReference(
+        identifier
+      ).friendlyUniqueId;
+
+    // Add terraform remote state to toStack
+    const remoteState = toStack.registerIncomingCrossStackReference(fromStack);
+
+    return remoteState.get(outputId);
   }
 }

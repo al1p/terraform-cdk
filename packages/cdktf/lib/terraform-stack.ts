@@ -16,6 +16,12 @@ const STACK_SYMBOL = Symbol.for("cdktf/TerraformStack");
 import { ValidateProviderPresence } from "./validations";
 import { App } from "./app";
 import { TerraformBackend } from "./terraform-backend";
+import {
+  DataTerraformRemoteStateLocal,
+  ref,
+  TerraformOutput,
+  TerraformRemoteState,
+} from ".";
 
 export interface TerraformStackMetadata {
   readonly stackName: string;
@@ -26,6 +32,8 @@ export interface TerraformStackMetadata {
 export class TerraformStack extends Construct {
   private readonly rawOverrides: any = {};
   private readonly cdktfVersion: string;
+  private crossStackOutputs: Record<string, TerraformOutput> = {};
+  private crossStackDataSources: Record<string, TerraformRemoteState> = {};
   public synthesizer: IStackSynthesizer;
 
   constructor(scope: Construct, id: string) {
@@ -154,6 +162,13 @@ export class TerraformStack extends Construct {
     return resolve(this, providers);
   }
 
+  public prepareStack() {
+    // A preparing resolve run might add new resources to the stack
+    terraformElements(this).forEach((e) =>
+      resolve(this, e.toTerraform(), true)
+    );
+  }
+
   public toTerraform(): any {
     const tf = {};
 
@@ -183,6 +198,42 @@ export class TerraformStack extends Construct {
     deepMerge(tf, this.rawOverrides);
 
     return resolve(this, tf);
+  }
+
+  public registerOutgoingCrossStackReference(identifier: string) {
+    if (this.crossStackOutputs[identifier]) {
+      return this.crossStackOutputs[identifier];
+    }
+
+    const stack = TerraformStack.of(this);
+    const output = new TerraformOutput(
+      stack,
+      `cross-stack-output-${identifier}`,
+      {
+        value: ref(identifier),
+      }
+    );
+
+    this.crossStackOutputs[identifier] = output;
+    return output;
+  }
+
+  public registerIncomingCrossStackReference(fromStack: TerraformStack) {
+    if (this.crossStackDataSources[String(fromStack)]) {
+      return this.crossStackDataSources[String(fromStack)];
+    }
+
+    // TODO: stack name in construct identifier?
+    // TODO: use correct remote state based on stacks state
+    const remoteState = new DataTerraformRemoteStateLocal(
+      this,
+      `cross-stack-reference-input-${fromStack}`,
+      {
+        path: "/Users/danielschmidt/work/terraform-cdk/examples/typescript/docker/terraform.images.tfstate",
+      }
+    );
+    this.crossStackDataSources[String(fromStack)] = remoteState;
+    return remoteState;
   }
 }
 

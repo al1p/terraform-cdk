@@ -1,7 +1,7 @@
 import { IResolvable, IResolveContext } from "./tokens/resolvable";
 import { Intrinsic } from "./tokens/private/intrinsic";
 import { Tokenization } from "./tokens/token";
-import { LazyBase } from ".";
+import { App, LazyBase, TerraformStack } from ".";
 
 class TFExpression extends Intrinsic implements IResolvable {
   public isInnerTerraformExpression = false;
@@ -102,18 +102,42 @@ export function rawString(str: string): IResolvable {
 }
 
 class Reference extends TFExpression {
-  constructor(private identifier: string) {
+  private crossStackIdentifier?: string;
+  constructor(
+    private identifier: string,
+    private originStack?: TerraformStack
+  ) {
     super(identifier);
   }
 
-  public resolve(): string {
+  private get referenceIdentifier(): string {
+    return this.crossStackIdentifier ?? this.identifier;
+  }
+
+  public resolve(context: IResolveContext): string {
+    // We check for cross stack references on preparation, setting a new identifier
+    const resolutionStack = TerraformStack.of(context.scope);
+
+    if (context.preparing) {
+      // Cross stack reference
+      if (this.originStack && this.originStack !== resolutionStack) {
+        const app = App.of(this.originStack);
+        this.crossStackIdentifier = app.crossStackReference(
+          this.originStack,
+          resolutionStack,
+          this.identifier
+        );
+        markAsInner(this.crossStackIdentifier);
+      }
+    }
+
     return this.isInnerTerraformExpression
-      ? this.identifier
-      : `\${${this.identifier}}`;
+      ? this.referenceIdentifier
+      : `\${${this.referenceIdentifier}}`;
   }
 }
-export function ref(identifier: string): IResolvable {
-  return new Reference(identifier);
+export function ref(identifier: string, stack?: TerraformStack): IResolvable {
+  return new Reference(identifier, stack);
 }
 
 function markAsInner(arg: any) {

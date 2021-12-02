@@ -15,6 +15,7 @@ export abstract class TerraformRemoteState
   extends TerraformElement
   implements ITerraformAddressable
 {
+  public static readonly tfResourceType = "terraform_remote_state";
   constructor(
     scope: Construct,
     id: string,

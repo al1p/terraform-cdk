@@ -16,12 +16,7 @@ const STACK_SYMBOL = Symbol.for("cdktf/TerraformStack");
 import { ValidateProviderPresence } from "./validations";
 import { App } from "./app";
 import { TerraformBackend } from "./terraform-backend";
-import {
-  DataTerraformRemoteStateLocal,
-  ref,
-  TerraformOutput,
-  TerraformRemoteState,
-} from ".";
+import { LocalBackend, ref, TerraformOutput, TerraformRemoteState } from ".";
 
 export interface TerraformStackMetadata {
   readonly stackName: string;
@@ -29,6 +24,7 @@ export interface TerraformStackMetadata {
   readonly backend: string;
 }
 
+type Constructor<T> = Function & { prototype: T };
 export class TerraformStack extends Construct {
   private readonly rawOverrides: any = {};
   private readonly cdktfVersion: string;
@@ -144,12 +140,12 @@ export class TerraformStack extends Construct {
       : "";
   }
 
-  public allProviders(): TerraformProvider[] {
-    const providers: TerraformProvider[] = [];
+  private findAll<T>(ClassConstructor: Constructor<T>): T[] {
+    const items: T[] = [];
 
     const visit = async (node: IConstruct) => {
-      if (node instanceof TerraformProvider) {
-        providers.push(node);
+      if (node instanceof ClassConstructor) {
+        items.push(node as unknown as T);
       }
 
       for (const child of node.node.children) {
@@ -159,7 +155,30 @@ export class TerraformStack extends Construct {
 
     visit(this);
 
-    return resolve(this, providers);
+    return resolve(this, items);
+  }
+
+  public allProviders(): TerraformProvider[] {
+    return this.findAll(TerraformProvider);
+  }
+
+  public get backend(): TerraformBackend | null {
+    const items: TerraformBackend[] = [];
+
+    const visit = async (node: IConstruct) => {
+      if (TerraformBackend.isBackend(node)) {
+        items.push(node);
+      }
+
+      for (const child of node.node.children) {
+        visit(child);
+      }
+    };
+
+    visit(this);
+
+    // There should only be one backend
+    return items[0]; // TODO: See if not resolving here causes problems
   }
 
   public prepareStack() {
@@ -222,16 +241,15 @@ export class TerraformStack extends Construct {
     if (this.crossStackDataSources[String(fromStack)]) {
       return this.crossStackDataSources[String(fromStack)];
     }
+    const originBackend = fromStack.backend || new LocalBackend(fromStack, {});
 
     // TODO: stack name in construct identifier?
-    // TODO: use correct remote state based on stacks state
-    const remoteState = new DataTerraformRemoteStateLocal(
+    const remoteState = originBackend.getRemoteStateDataSource(
       this,
       `cross-stack-reference-input-${fromStack}`,
-      {
-        path: "/Users/danielschmidt/work/terraform-cdk/examples/typescript/docker/terraform.images.tfstate",
-      }
+      fromStack.toString()
     );
+
     this.crossStackDataSources[String(fromStack)] = remoteState;
     return remoteState;
   }

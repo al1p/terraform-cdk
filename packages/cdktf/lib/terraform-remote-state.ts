@@ -20,7 +20,7 @@ export abstract class TerraformRemoteState
     scope: Construct,
     id: string,
     private readonly backend: string,
-    private readonly config: DataTerraformRemoteStateConfig
+    protected config: DataTerraformRemoteStateConfig
   ) {
     super(scope, id);
   }

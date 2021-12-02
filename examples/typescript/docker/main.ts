@@ -72,6 +72,6 @@ class MyStack extends TerraformStack {
 }
 
 const app = new App();
-const images = new MyImages(app, "images");
+const images = new MyImages(app, "TestStack");
 new MyStack(app, "demo-cdktf-ts-docker", images.nginxImage);
 app.synth();

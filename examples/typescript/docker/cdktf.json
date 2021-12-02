@@ -1,5 +1,8 @@
 {
   "language": "typescript",
   "app": "npx ts-node main.ts",
-  "terraformProviders": ["kreuzwerker/docker@~> 2.0"]
+  "terraformProviders": [
+    "kreuzwerker/docker@~> 2.0"
+  ],
+  "projectId": "70425b5d-955c-4014-bb35-f69e87108938"
 }

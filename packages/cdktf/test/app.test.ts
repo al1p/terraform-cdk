@@ -5,6 +5,8 @@ import {
   TerraformResource,
   Testing,
   DataTerraformRemoteStateLocal,
+  LocalBackend,
+  HttpBackend,
 } from "../lib";
 
 import { version } from "../package.json";
@@ -149,9 +151,8 @@ describe("Cross Stack references", () => {
   let originStack: OriginStack;
   let testStack: TerraformStack;
 
-  beforeAll(() => {
+  beforeEach(() => {
     const outdir = fs.mkdtempSync(path.join(os.tmpdir(), "cdktf.outdir."));
-    console.log(outdir);
     app = Testing.stubVersion(new App({ stackTraces: false, outdir }));
     originStack = new OriginStack(app, "OriginStack");
     testStack = new TerraformStack(app, "TestStack");
@@ -173,7 +174,7 @@ describe("Cross Stack references", () => {
     return { originStackSynth, targetStackSynth };
   }
 
-  it.only("creates remote state and output", () => {
+  it("creates remote state and output", () => {
     new TestResource(testStack, "Resource", {
       name: originStack.resource.stringValue,
     });
@@ -185,8 +186,61 @@ describe("Cross Stack references", () => {
     expect(targetStackSynth).toHaveDataSource(DataTerraformRemoteStateLocal);
   });
 
-  it.todo("passes backend configuration to remote state definition");
-  it.todo("uses the same remote state as the origin stack");
+  it("infers the correct path for local state", () => {
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    app.synth();
+    const { originStackSynth, targetStackSynth } = getStackSynths(app);
+
+    expect(Object.keys(JSON.parse(originStackSynth).output).length).toBe(1);
+    expect(targetStackSynth).toHaveDataSourceWithProperties(
+      DataTerraformRemoteStateLocal,
+      {
+        backend: "local",
+        config: {
+          path: path.resolve(process.cwd(), `terraform.OriginStack.tfstate`),
+        },
+      }
+    );
+  });
+
+  it("passes backend configuration to remote state definition", () => {
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    new LocalBackend(originStack, {
+      path: "/tfstate/mystate.tfstate",
+    });
+
+    app.synth();
+    const { originStackSynth, targetStackSynth } = getStackSynths(app);
+
+    expect(Object.keys(JSON.parse(originStackSynth).output).length).toBe(1);
+    expect(targetStackSynth).toHaveDataSourceWithProperties(
+      DataTerraformRemoteStateLocal,
+      {
+        backend: "local",
+        config: {
+          path: "/tfstate/mystate.tfstate",
+        },
+      }
+    );
+  });
+  it("errors if cross stack references are used with unsupported backends", () => {
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    new HttpBackend(originStack, { address: "http://example.com" });
+
+    expect(() => app.synth()).toThrowError(
+      /This Backend is not implemented yet/
+    );
+  });
+  it.todo("uses the same remote state type as the origin stacks backend");
   it.todo("uses assets for local state");
 
   it.todo("creates a dependency graph between stacks in manifest");

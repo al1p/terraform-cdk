@@ -307,6 +307,7 @@ export const TerraformProvider: React.FunctionComponent<TerraformProviderConfig>
       annotations: [],
       synthesizedStackPath: "",
       workingDirectory: "",
+      dependencies: [],
     };
 
     const [state, dispatch] = React.useReducer(

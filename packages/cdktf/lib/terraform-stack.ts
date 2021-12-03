@@ -163,7 +163,7 @@ export class TerraformStack extends Construct {
     return this.findAll(TerraformProvider);
   }
 
-  public get backend(): TerraformBackend | null {
+  public get backend(): TerraformBackend {
     const items: TerraformBackend[] = [];
 
     const visit = async (node: IConstruct) => {
@@ -179,7 +179,8 @@ export class TerraformStack extends Construct {
     visit(this);
 
     // There should only be one backend
-    return items[0]; // TODO: See if not resolving here causes problems
+    // TODO: See if not resolving here causes problems
+    return items[0] || new LocalBackend(this, {});
   }
 
   public prepareStack() {
@@ -242,7 +243,7 @@ export class TerraformStack extends Construct {
     if (this.crossStackDataSources[String(fromStack)]) {
       return this.crossStackDataSources[String(fromStack)];
     }
-    const originBackend = fromStack.backend || new LocalBackend(fromStack, {});
+    const originBackend = fromStack.backend;
 
     // TODO: stack name in construct identifier?
     const remoteState = originBackend.getRemoteStateDataSource(

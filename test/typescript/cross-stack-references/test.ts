@@ -6,12 +6,24 @@ describe("cross stack references", () => {
   beforeAll(async () => {
     driver = new TestDriver(__dirname);
     await driver.setupTypescriptProject();
-    await driver.synth();
-
     console.log(driver.workingDirectory);
+    await driver.synth();
   });
 
   test("synth generates JSON", () => {
     expect(driver.synthesizedStack("source").toString()).toMatchSnapshot();
+    expect(driver.synthesizedStack("passthrough").toString()).toMatchSnapshot();
+    expect(driver.synthesizedStack("sink").toString()).toMatchSnapshot();
+
+    expect(driver.manifest()).toMatchSnapshot();
   });
+
+  it.todo("references primitive values");
+  it.todo("references can be passed through stacks");
+  it.todo("can use reference in terraform function");
+
+  it.todo("references terraform function output");
+
+  it.todo("references complex values");
+  it.todo("references nested values");
 });

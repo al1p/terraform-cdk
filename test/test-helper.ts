@@ -123,6 +123,12 @@ export class TestDriver {
     return path.join(this.workingDirectory, "cdktf.out", "stacks", stackName);
   };
 
+  manifest = () => {
+    return fs.readFileSync(
+      path.join(this.workingDirectory, "cdktf.out", "manifest.json")
+    );
+  };
+
   synthesizedStack = (stackName: string) => {
     return new QueryableStack(
       fs.readFileSync(

@@ -7,6 +7,7 @@ import {
   TerraformRemoteState,
   DataTerraformRemoteStateConfig,
 } from "../terraform-remote-state";
+import { TerraformAsset } from "..";
 
 export class LocalBackend extends TerraformBackend {
   constructor(scope: Construct, public readonly props: LocalBackendProps) {
@@ -24,9 +25,11 @@ export class LocalBackend extends TerraformBackend {
   ) {
     return new DataTerraformRemoteStateLocal(scope, name, {
       workspace: this.props.workspaceDir,
-      path:
-        this.props.path ||
-        path.join(process.cwd(), `terraform.${fromStack}.tfstate`),
+      path: new TerraformAsset(scope, `${fromStack}-state`, {
+        path:
+          this.props.path ||
+          path.join(process.cwd(), `terraform.${fromStack}.tfstate`),
+      }).path,
     });
   }
 }

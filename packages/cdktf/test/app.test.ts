@@ -7,6 +7,8 @@ import {
   DataTerraformRemoteStateLocal,
   LocalBackend,
   HttpBackend,
+  RemoteBackend,
+  DataTerraformRemoteState,
 } from "../lib";
 
 import { version } from "../package.json";
@@ -174,9 +176,25 @@ describe("Cross Stack references", () => {
     return { originStackSynth, targetStackSynth };
   }
 
+  it("without cross stack references no extra resources are created", () => {
+    app.synth();
+    const { originStackSynth, targetStackSynth } = getStackSynths(app);
+
+    expect(JSON.parse(originStackSynth).output).toBe(undefined);
+    expect(targetStackSynth).not.toHaveDataSource(
+      DataTerraformRemoteStateLocal
+    );
+  });
+
   it("creates remote state and output", () => {
     new TestResource(testStack, "Resource", {
       name: originStack.resource.stringValue,
+    });
+    new RemoteBackend(originStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace",
+      },
     });
 
     app.synth();
@@ -187,11 +205,23 @@ describe("Cross Stack references", () => {
   });
 
   it("infers the correct path for local state", () => {
+    const tfStatePath = path.resolve(
+      process.cwd(),
+      `terraform.OriginStack.tfstate`
+    );
     new TestResource(testStack, "Resource", {
       name: originStack.resource.stringValue,
     });
 
-    app.synth();
+    // Would error if the path was not correct
+    fs.writeFileSync(tfStatePath, "foo", "utf8");
+
+    try {
+      app.synth();
+    } finally {
+      fs.rmSync(tfStatePath);
+    }
+
     const { originStackSynth, targetStackSynth } = getStackSynths(app);
 
     expect(Object.keys(JSON.parse(originStackSynth).output).length).toBe(1);
@@ -200,7 +230,7 @@ describe("Cross Stack references", () => {
       {
         backend: "local",
         config: {
-          path: path.resolve(process.cwd(), `terraform.OriginStack.tfstate`),
+          path: expect.stringContaining("assets"),
         },
       }
     );
@@ -211,8 +241,11 @@ describe("Cross Stack references", () => {
       name: originStack.resource.stringValue,
     });
 
+    const outdir = fs.mkdtempSync(path.join(os.tmpdir(), "cdktf.outdir."));
+    const targetPath = path.join(outdir, "terraform.tfstate");
+    fs.writeFileSync(targetPath, "myState", "utf8");
     new LocalBackend(originStack, {
-      path: "/tfstate/mystate.tfstate",
+      path: targetPath,
     });
 
     app.synth();
@@ -224,7 +257,8 @@ describe("Cross Stack references", () => {
       {
         backend: "local",
         config: {
-          path: "/tfstate/mystate.tfstate",
+          // TODO:
+          path: expect.stringContaining("assets"),
         },
       }
     );
@@ -240,7 +274,36 @@ describe("Cross Stack references", () => {
       /This Backend is not implemented yet/
     );
   });
-  it.todo("uses the same remote state type as the origin stacks backend");
+
+  it("uses the same remote state type as the origin stacks backend", () => {
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    new RemoteBackend(originStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace",
+      },
+    });
+
+    app.synth();
+    const { originStackSynth, targetStackSynth } = getStackSynths(app);
+
+    expect(Object.keys(JSON.parse(originStackSynth).output).length).toBe(1);
+    expect(targetStackSynth).toHaveDataSourceWithProperties(
+      DataTerraformRemoteState,
+      {
+        backend: "remote",
+        config: {
+          organization: "testorg",
+          workspaces: {
+            name: "testworkspace",
+          },
+        },
+      }
+    );
+  });
   it.todo("uses assets for local state");
 
   it.todo("creates a dependency graph between stacks in manifest");

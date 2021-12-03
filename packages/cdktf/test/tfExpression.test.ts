@@ -1,4 +1,4 @@
-import { Token } from "../lib";
+import { TerraformStack, Token } from "../lib";
 import {
   addOperation,
   andOperation,
@@ -25,19 +25,20 @@ import {
 import { resolve } from "../lib/_tokens";
 const resolveExpression = (expr: Expression) => resolve(null as any, expr);
 
+const stack = new TerraformStack(undefined as any, "Stack");
 test("can render reference", () => {
   expect(
-    (ref("aws_s3_bucket.best.bucket_domain_name") as any).resolve()
+    (ref("aws_s3_bucket.best.bucket_domain_name", stack) as any).resolve()
   ).toMatchInlineSnapshot(`"\${aws_s3_bucket.best.bucket_domain_name}"`);
 });
 
 test("propertyAccess renders correctly", () => {
   expect(
     resolveExpression(
-      propertyAccess(ref("some_resource.my_resource.some_attribute_array"), [
-        0,
-        "name",
-      ])
+      propertyAccess(
+        ref("some_resource.my_resource.some_attribute_array", stack),
+        [0, "name"]
+      )
     )
   ).toMatchInlineSnapshot(
     `"\${some_resource.my_resource.some_attribute_array[0][\\"name\\"]}"`
@@ -153,14 +154,14 @@ test("functions escape terraform reference like strings", () => {
 
 test("functions don't escape terraform references", () => {
   expect(
-    resolveExpression(call("length", [ref("docker_container.foo.bar")]))
+    resolveExpression(call("length", [ref("docker_container.foo.bar", stack)]))
   ).toMatchInlineSnapshot(`"\${length(docker_container.foo.bar)}"`);
 });
 
 test("functions don't escape terraform references that have been tokenized", () => {
   expect(
     resolveExpression(
-      call("length", [Token.asString(ref("docker_container.foo.bar"))])
+      call("length", [Token.asString(ref("docker_container.foo.bar", stack))])
     )
   ).toMatchInlineSnapshot(`"\${length(docker_container.foo.bar)}"`);
 });

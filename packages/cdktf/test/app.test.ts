@@ -304,7 +304,6 @@ describe("Cross Stack references", () => {
       }
     );
   });
-  it.todo("uses assets for local state");
 
   it.todo("creates a dependency graph between stacks in manifest");
   it.todo("throws an error when a stack is referenced from a different app");

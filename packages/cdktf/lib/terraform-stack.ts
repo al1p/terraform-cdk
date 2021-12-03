@@ -229,7 +229,7 @@ export class TerraformStack extends Construct {
       stack,
       `cross-stack-output-${identifier}`,
       {
-        value: ref(identifier),
+        value: ref(identifier, stack),
       }
     );
 

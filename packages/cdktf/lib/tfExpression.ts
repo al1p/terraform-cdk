@@ -103,10 +103,7 @@ export function rawString(str: string): IResolvable {
 
 class Reference extends TFExpression {
   private crossStackIdentifier?: string;
-  constructor(
-    private identifier: string,
-    private originStack?: TerraformStack
-  ) {
+  constructor(private identifier: string, private originStack: TerraformStack) {
     super(identifier);
   }
 
@@ -136,7 +133,7 @@ class Reference extends TFExpression {
       : `\${${this.referenceIdentifier}}`;
   }
 }
-export function ref(identifier: string, stack?: TerraformStack): IResolvable {
+export function ref(identifier: string, stack: TerraformStack): IResolvable {
   return new Reference(identifier, stack);
 }
 

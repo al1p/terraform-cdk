@@ -161,10 +161,14 @@ describe("Cross Stack references", () => {
     new TestProvider(testStack, "TestProvider", {});
   });
 
-  function getStackSynths(app: App): {
+  type StackSynthResult = {
     originStackSynth: string;
     targetStackSynth: string;
-  } {
+    additionalStackSynth?: string;
+    manifest: string;
+  };
+
+  function getStackSynths(app: App, additionalStack?: TerraformStack) {
     const originStackSynth = fs.readFileSync(
       path.resolve(app.outdir, "stacks", "OriginStack", "cdk.tf.json"),
       "utf8"
@@ -173,7 +177,29 @@ describe("Cross Stack references", () => {
       path.resolve(app.outdir, "stacks", "TestStack", "cdk.tf.json"),
       "utf8"
     );
-    return { originStackSynth, targetStackSynth };
+
+    const manifest = fs.readFileSync(
+      path.resolve(app.outdir, "manifest.json"),
+      "utf8"
+    );
+    const result: StackSynthResult = {
+      originStackSynth,
+      targetStackSynth,
+      manifest,
+    };
+
+    if (additionalStack) {
+      result.additionalStackSynth = fs.readFileSync(
+        path.resolve(
+          app.outdir,
+          "stacks",
+          additionalStack.toString(),
+          "cdk.tf.json"
+        ),
+        "utf8"
+      );
+    }
+    return result;
   }
 
   it("without cross stack references no extra resources are created", () => {
@@ -305,18 +331,116 @@ describe("Cross Stack references", () => {
     );
   });
 
-  it.todo("creates a dependency graph between stacks in manifest");
-  it.todo("throws an error when a stack is referenced from a different app");
-  it.todo("throws an error when there is a circular stack dependency");
+  it("creates a dependency graph between stacks in manifest", () => {
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+    new RemoteBackend(originStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace",
+      },
+    });
 
+    app.synth();
+    const { manifest } = getStackSynths(app);
+
+    expect(JSON.parse(manifest).stacks.TestStack.dependencies).toEqual([
+      "OriginStack",
+    ]);
+    expect(JSON.parse(manifest).stacks.OriginStack.dependencies).toEqual([]);
+  });
+
+  it.skip("throws an error when a stack is referenced from a different app", () => {
+    new RemoteBackend(originStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace",
+      },
+    });
+
+    const otherApp = new App();
+    const otherStack = new TerraformStack(otherApp, "OtherStack");
+    new TestResource(otherStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    expect(() => app.synth()).toThrow();
+  });
+
+  it("throws an error when there is a circular stack dependency", () => {
+    const anotherStack = new TerraformStack(app, "AnotherStack");
+    new RemoteBackend(originStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace",
+      },
+    });
+    new RemoteBackend(testStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace2",
+      },
+    });
+    new RemoteBackend(anotherStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace3",
+      },
+    });
+
+    // OriginStack => TestStack => AnotherStack => OriginStack
+    const resource = new TestResource(testStack, "Resource1", {
+      name: originStack.resource.stringValue,
+    });
+
+    const resource2 = new TestResource(anotherStack, "Resource2", {
+      name: resource.stringValue,
+    });
+
+    new TestResource(originStack, "Resource3", {
+      name: resource2.stringValue,
+    });
+
+    expect(() => app.synth()).toThrowError(
+      /Can not add dependency TestStack to AnotherStack since it would result in a loop/
+    );
+  });
+
+  it("one reference can be used in multiple stacks", () => {
+    new RemoteBackend(originStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace",
+      },
+    });
+
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    const anotherStack = new TerraformStack(app, "AnotherStack");
+    new TestProvider(anotherStack, "Provider", {});
+    new TestResource(anotherStack, "Resource2", {
+      name: originStack.resource.stringValue,
+    });
+
+    app.synth();
+    const { originStackSynth, targetStackSynth, additionalStackSynth } =
+      getStackSynths(app, anotherStack);
+
+    expect(Object.keys(JSON.parse(originStackSynth).output).length).toBe(1);
+    expect(targetStackSynth).toHaveDataSource(DataTerraformRemoteStateLocal);
+    expect(additionalStackSynth).toHaveDataSource(
+      DataTerraformRemoteStateLocal
+    );
+  });
+
+  // TODO: test these in end to end tests
   it.todo("references primitive values");
   it.todo("references complex values");
   it.todo("references nested values");
-
   it.todo("references terraform function output");
   it.todo("can use reference in terraform function");
-
   it.todo("references can be passed through stacks");
-
-  it.todo("one reference can be used in multiple stacks");
 });

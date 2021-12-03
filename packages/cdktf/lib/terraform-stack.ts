@@ -31,6 +31,7 @@ export class TerraformStack extends Construct {
   private crossStackOutputs: Record<string, TerraformOutput> = {};
   private crossStackDataSources: Record<string, TerraformRemoteState> = {};
   public synthesizer: IStackSynthesizer;
+  public dependencies: TerraformStack[] = [];
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -252,6 +253,24 @@ export class TerraformStack extends Construct {
 
     this.crossStackDataSources[String(fromStack)] = remoteState;
     return remoteState;
+  }
+
+  // Check here for loops in the dependency graph
+  public dependsOn(stack: TerraformStack): boolean {
+    return (
+      this.dependencies.includes(stack) ||
+      this.dependencies.some((d) => d.dependsOn(stack))
+    );
+  }
+
+  public addDependency(dependency: TerraformStack) {
+    if (dependency.dependsOn(this)) {
+      throw new Error(
+        `Can not add dependency ${dependency} to ${this} since it would result in a loop`
+      );
+    }
+
+    this.dependencies.push(dependency);
   }
 }
 

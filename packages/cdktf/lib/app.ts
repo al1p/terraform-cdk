@@ -151,15 +151,21 @@ export class App extends Construct {
     toStack: TerraformStack,
     identifier: string
   ): string {
-    // TODO: add edge in inter-stack dependency graph
-    // Check here for loops
-    // Add output to fromStack
+    // TODO: Check for different apps
+    //     if (App.of(fromStack) !== App.of(toStack)) {
+    //       throw new Error(
+    //         `Cross-stack references are only allowed between stacks in the same application.
+    // ${toStack} is in a different application than ${fromStack}`
+    //       );
+    //     }
+
+    toStack.addDependency(fromStack);
+
     const outputId =
       fromStack.registerOutgoingCrossStackReference(
         identifier
       ).friendlyUniqueId;
 
-    // Add terraform remote state to toStack
     const remoteState = toStack.registerIncomingCrossStackReference(fromStack);
 
     return remoteState.get(outputId);

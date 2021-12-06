@@ -81,11 +81,11 @@ exports[`cross stack references synth generates JSON 1`] = `
   },
   \\"output\\": {
     \\"crossstackoutputrandomintegerintresult\\": {
-      \\"value\\": \\"\${random_integer.int.result}\\",
+      \\"value\\": \\"random_integer.int.result\\",
       \\"sensitive\\": true
     },
     \\"crossstackoutputrandompasswordstrresult\\": {
-      \\"value\\": \\"\${random_password.str.result}\\",
+      \\"value\\": \\"random_password.str.result\\",
       \\"sensitive\\": true
     }
   }
@@ -150,7 +150,7 @@ exports[`cross stack references synth generates JSON 2`] = `
       \\"crossstackreferenceinputsource\\": {
         \\"backend\\": \\"local\\",
         \\"config\\": {
-          \\"path\\": \\"/tmp/testrglGrf/terraform.source.tfstate\\"
+          \\"path\\": \\"/tmp/testAz77Td/terraform.source.tfstate\\"
         }
       }
     }
@@ -216,7 +216,7 @@ exports[`cross stack references synth generates JSON 3`] = `
       \\"crossstackreferenceinputsource\\": {
         \\"backend\\": \\"local\\",
         \\"config\\": {
-          \\"path\\": \\"/tmp/testrglGrf/terraform.source.tfstate\\"
+          \\"path\\": \\"/tmp/testAz77Td/terraform.source.tfstate\\"
         }
       }
     }

@@ -103,8 +103,14 @@ export function rawString(str: string): IResolvable {
 
 class Reference extends TFExpression {
   private crossStackIdentifier: Record<string, string> = {};
-  constructor(private identifier: string, private originStack: TerraformStack) {
+  constructor(
+    private identifier: string,
+    private originStack: TerraformStack,
+    markAsInner: boolean
+  ) {
     super(identifier);
+
+    this.isInnerTerraformExpression = markAsInner;
   }
 
   private referenceIdentifier(stackName: string): string {
@@ -134,8 +140,12 @@ class Reference extends TFExpression {
     return this.isInnerTerraformExpression ? identifier : `\${${identifier}}`;
   }
 }
-export function ref(identifier: string, stack: TerraformStack): IResolvable {
-  return new Reference(identifier, stack);
+export function ref(
+  identifier: string,
+  stack: TerraformStack,
+  markAsInner = false
+): IResolvable {
+  return new Reference(identifier, stack, markAsInner);
 }
 
 function markAsInner(arg: any) {

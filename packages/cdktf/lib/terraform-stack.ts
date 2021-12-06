@@ -232,6 +232,7 @@ export class TerraformStack extends Construct {
       `cross-stack-output-${identifier}`,
       {
         value: ref(identifier, stack),
+        sensitive: true,
       }
     );
 
@@ -269,6 +270,10 @@ export class TerraformStack extends Construct {
       throw new Error(
         `Can not add dependency ${dependency} to ${this} since it would result in a loop`
       );
+    }
+
+    if (this.dependencies.includes(dependency)) {
+      return;
     }
 
     this.dependencies.push(dependency);

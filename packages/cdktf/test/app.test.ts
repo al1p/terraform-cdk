@@ -9,6 +9,7 @@ import {
   HttpBackend,
   RemoteBackend,
   DataTerraformRemoteState,
+  Fn,
 } from "../lib";
 
 import { version } from "../package.json";
@@ -256,7 +257,7 @@ describe("Cross Stack references", () => {
       {
         backend: "local",
         config: {
-          path: expect.stringContaining("assets"),
+          path: path.resolve(process.cwd(), `terraform.OriginStack.tfstate`),
         },
       }
     );
@@ -283,8 +284,7 @@ describe("Cross Stack references", () => {
       {
         backend: "local",
         config: {
-          // TODO:
-          path: expect.stringContaining("assets"),
+          path: targetPath,
         },
       }
     );
@@ -351,6 +351,86 @@ describe("Cross Stack references", () => {
     expect(JSON.parse(manifest).stacks.OriginStack.dependencies).toEqual([]);
   });
 
+  it("the dependency field in manifest has no double entries", () => {
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    new TestResource(testStack, "Resource2", {
+      name: originStack.resource.stringValue,
+    });
+    new RemoteBackend(originStack, {
+      organization: "testorg",
+      workspaces: {
+        name: "testworkspace",
+      },
+    });
+
+    app.synth();
+    const { manifest } = getStackSynths(app);
+
+    expect(JSON.parse(manifest).stacks.TestStack.dependencies).toEqual([
+      "OriginStack",
+    ]);
+    expect(JSON.parse(manifest).stacks.OriginStack.dependencies).toEqual([]);
+  });
+
+  it("with cross stack references, no cross stack references are used when not necessary", () => {
+    const name = originStack.resource.stringValue;
+    new TestResource(originStack, "MyResourceWithRef", {
+      name,
+    });
+    new TestResource(testStack, "Resource", {
+      name,
+    });
+
+    app.synth();
+    const { originStackSynth } = getStackSynths(app);
+    const resources = JSON.parse(originStackSynth).resource.test_resource;
+    const myResourceKey = Object.keys(resources).find((name) =>
+      name.includes("MyResourceWithRef")
+    );
+
+    expect(myResourceKey).toBeDefined();
+    expect(resources[myResourceKey as string].name).toMatchInlineSnapshot(
+      `"\${test_resource.OriginStack_resource_3C7D7739.string_value}"`
+    );
+  });
+
+  it.skip("one ref is cross stack and the other cross stack and inner but the same ref is used", () => {
+    const name = originStack.resource.stringValue;
+    new TestResource(testStack, "ResourceWithoutFunction", {
+      name,
+    });
+    new TestResource(testStack, "ResourceWithFunction", {
+      name: Fn.tostring(name),
+    });
+
+    app.synth();
+    const { targetStackSynth } = getStackSynths(app);
+    const resources = JSON.parse(targetStackSynth).resource.test_resource;
+    const resourceWithoutFunctionKey = Object.keys(resources).find((name) =>
+      name.includes("ResourceWithoutFunction")
+    );
+    const resourceWithFunctionKey = Object.keys(resources).find((name) =>
+      name.includes("ResourceWithFunction")
+    );
+
+    expect(resourceWithoutFunctionKey).toBeDefined();
+    expect(
+      resources[resourceWithoutFunctionKey as string].name
+    ).toMatchInlineSnapshot(
+      `"\${data.terraform_remote_state.TestStack_crossstackreferenceinputOriginStack_EB91482E.outputs.OriginStack_crossstackoutputtestresourceOriginStackresource3C7D7739stringvalue_362449F3}"`
+    );
+
+    expect(resourceWithFunctionKey).toBeDefined();
+    expect(
+      resources[resourceWithFunctionKey as string].name
+    ).toMatchInlineSnapshot(
+      `"\${tostring(data.terraform_remote_state.TestStack_crossstackreferenceinputOriginStack_EB91482E.outputs.OriginStack_crossstackoutputtestresourceOriginStackresource3C7D7739stringvalue_362449F3)}"`
+    );
+  });
+
   it.skip("throws an error when a stack is referenced from a different app", () => {
     new RemoteBackend(originStack, {
       organization: "testorg",
@@ -366,6 +446,24 @@ describe("Cross Stack references", () => {
     });
 
     expect(() => app.synth()).toThrow();
+  });
+
+  it("makes all outputs sensitive since the input could be", () => {
+    new TestResource(testStack, "Resource", {
+      name: originStack.resource.stringValue,
+    });
+
+    app.synth();
+    const { originStackSynth } = getStackSynths(app);
+
+    expect(Object.values(JSON.parse(originStackSynth).output)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sensitive: true,
+          value: expect.stringContaining(".string_value"),
+        }),
+      ])
+    );
   });
 
   it("throws an error when there is a circular stack dependency", () => {
@@ -435,12 +533,4 @@ describe("Cross Stack references", () => {
       DataTerraformRemoteStateLocal
     );
   });
-
-  // TODO: test these in end to end tests
-  it.todo("references primitive values");
-  it.todo("references complex values");
-  it.todo("references nested values");
-  it.todo("references terraform function output");
-  it.todo("can use reference in terraform function");
-  it.todo("references can be passed through stacks");
 });

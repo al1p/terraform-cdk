@@ -125,7 +125,8 @@ export class TestDriver {
 
   manifest = () => {
     return fs.readFileSync(
-      path.join(this.workingDirectory, "cdktf.out", "manifest.json")
+      path.join(this.workingDirectory, "cdktf.out", "manifest.json"),
+      "utf8"
     );
   };
 

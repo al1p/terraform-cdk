@@ -7,7 +7,6 @@ import {
   TerraformRemoteState,
   DataTerraformRemoteStateConfig,
 } from "../terraform-remote-state";
-import { TerraformAsset } from "..";
 
 export class LocalBackend extends TerraformBackend {
   constructor(scope: Construct, public readonly props: LocalBackendProps) {

@@ -1,5 +1,5 @@
 import { Construct } from "constructs";
-import { App, TerraformStack, Testing } from "cdktf";
+import { App, Fn, TerraformStack, Testing } from "cdktf";
 import { RandomProvider, Integer, Password } from "./.gen/providers/random";
 import { LocalProvider, File } from "./.gen/providers/local";
 
@@ -31,7 +31,7 @@ export class SourceStack extends TerraformStack {
     });
     this.str = str.result;
 
-    writeToFile(this, "originInt", this.num);
+    writeToFile(this, "originNum", this.num);
     writeToFile(this, "originStr", this.str);
   }
 }
@@ -68,8 +68,7 @@ const passthrough = new ConsumerStack(app, "passthrough", {
   str: src.str,
 });
 new ConsumerStack(app, "sink", {
-  // num: Fn.sum([passthrough.num, passthrough.num]),
-  num: 42,
+  num: Fn.sum([passthrough.num, passthrough.num]),
   str: passthrough.str,
 });
 app.synth();

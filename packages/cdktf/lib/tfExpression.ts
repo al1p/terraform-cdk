@@ -102,13 +102,13 @@ export function rawString(str: string): IResolvable {
 }
 
 class Reference extends TFExpression {
-  private crossStackIdentifier?: string;
+  private crossStackIdentifier: Record<string, string> = {};
   constructor(private identifier: string, private originStack: TerraformStack) {
     super(identifier);
   }
 
-  private get referenceIdentifier(): string {
-    return this.crossStackIdentifier ?? this.identifier;
+  private referenceIdentifier(stackName: string): string {
+    return this.crossStackIdentifier[stackName] ?? this.identifier;
   }
 
   public resolve(context: IResolveContext): string {
@@ -119,18 +119,19 @@ class Reference extends TFExpression {
       // Cross stack reference
       if (this.originStack && this.originStack !== resolutionStack) {
         const app = App.of(this.originStack);
-        this.crossStackIdentifier = app.crossStackReference(
-          this.originStack,
-          resolutionStack,
-          this.identifier
-        );
-        markAsInner(this.crossStackIdentifier);
+        this.crossStackIdentifier[resolutionStack.toString()] =
+          app.crossStackReference(
+            this.originStack,
+            resolutionStack,
+            this.identifier
+          );
+
+        // markAsInner(this.crossStackIdentifier[resolutionStack.toString()]);
       }
     }
 
-    return this.isInnerTerraformExpression
-      ? this.referenceIdentifier
-      : `\${${this.referenceIdentifier}}`;
+    const identifier = this.referenceIdentifier(resolutionStack.toString());
+    return this.isInnerTerraformExpression ? identifier : `\${${identifier}}`;
   }
 }
 export function ref(identifier: string, stack: TerraformStack): IResolvable {

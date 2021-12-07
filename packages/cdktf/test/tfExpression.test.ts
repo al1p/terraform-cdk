@@ -183,3 +183,12 @@ test("null expression argument renders correctly", () => {
     `"\${(true || undefined)}"`
   );
 });
+
+test("same ref can be used twice in different contexts", () => {
+  const reference = ref("docker_container.foo.bar", stack);
+
+  expect(
+    resolve(null as any, call("length", [reference]))
+  ).toMatchInlineSnapshot();
+  expect(resolve(null as any, reference)).toMatchInlineSnapshot();
+});

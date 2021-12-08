@@ -1,3 +1,4 @@
+import { Construct } from "constructs";
 import { TerraformStack, Token } from "../lib";
 import {
   addOperation,
@@ -23,12 +24,17 @@ import {
   rawString,
 } from "../lib/tfExpression";
 import { resolve } from "../lib/_tokens";
-const resolveExpression = (expr: Expression) => resolve(null as any, expr);
 
-const stack = new TerraformStack(undefined as any, "Stack");
+const appScope = new Construct(undefined as any, "randomScope");
+
+const stack = new TerraformStack(appScope, "Stack");
+const resolveExpression = (expr: Expression) => resolve(stack, expr);
+
 test("can render reference", () => {
   expect(
-    (ref("aws_s3_bucket.best.bucket_domain_name", stack) as any).resolve()
+    resolveExpression(
+      ref("aws_s3_bucket.best.bucket_domain_name", stack) as any
+    )
   ).toMatchInlineSnapshot(`"\${aws_s3_bucket.best.bucket_domain_name}"`);
 });
 
@@ -174,12 +180,12 @@ test("functions escape string markers", () => {
 
 test("string index expression argument renders correctly", () => {
   expect(
-    resolve(null as any, orOperation(true, { a: "foo", b: "bar " }))
+    resolve(stack, orOperation(true, { a: "foo", b: "bar " }))
   ).toMatchInlineSnapshot(`"\${(true || {a = \\"foo\\", b = \\"bar \\"})}"`);
 });
 
 test("null expression argument renders correctly", () => {
-  expect(resolve(null as any, orOperation(true, null))).toMatchInlineSnapshot(
+  expect(resolve(stack, orOperation(true, null))).toMatchInlineSnapshot(
     `"\${(true || undefined)}"`
   );
 });
@@ -187,8 +193,31 @@ test("null expression argument renders correctly", () => {
 test("same ref can be used twice in different contexts", () => {
   const reference = ref("docker_container.foo.bar", stack);
 
+  expect(resolve(stack, call("length", [reference]))).toMatchInlineSnapshot(
+    `"\${length(docker_container.foo.bar)}"`
+  );
+  expect(resolve(stack, reference)).toMatchInlineSnapshot(
+    `"\${docker_container.foo.bar}"`
+  );
+});
+
+test("reference inside a string literal inside a terraform function adds extra terraform expression", () => {
+  const reference = ref("docker_container.foo.bar", stack);
   expect(
-    resolve(null as any, call("length", [reference]))
-  ).toMatchInlineSnapshot();
-  expect(resolve(null as any, reference)).toMatchInlineSnapshot();
+    resolve(
+      stack,
+      call("join", [
+        ", ",
+        [
+          `"one ref is plain ${reference} and the other one is inside a tokenized string ${Token.asString(
+            reference
+          )}"`,
+          reference, // this is a plain reference
+          `${Token.asString(reference)}`,
+        ],
+      ])
+    )
+  ).toMatchInlineSnapshot(
+    `"\${join(\\", \\", [\\"one ref is plain \${docker_container.foo.bar} and the other one is inside a tokenized string \${docker_container.foo.bar}\\", docker_container.foo.bar, docker_container.foo.bar])}"`
+  );
 });

@@ -1,19 +1,31 @@
 import { IResolvable, IResolveContext } from "./tokens/resolvable";
 import { Intrinsic } from "./tokens/private/intrinsic";
 import { Tokenization } from "./tokens/token";
-import { App, LazyBase, TerraformStack } from ".";
+import { App, TerraformStack } from ".";
 
 class TFExpression extends Intrinsic implements IResolvable {
-  public isInnerTerraformExpression = false;
-
   protected resolveArg(context: IResolveContext, arg: any): string {
+    console.log(
+      `Resolve Arg is called on ${this} for ${arg} with context ${
+        context.inTerraformExpression ? "in TFE" : "not in TFE"
+      }`
+    );
     const resolvedArg = context.resolve(arg);
+    console.log(`Preliminary resolvedArg ${resolvedArg}`);
     if (Tokenization.isResolvable(arg)) {
+      console.log(`Arg is resolvable, done here`);
       return resolvedArg;
     }
 
     if (typeof arg === "string") {
-      return this.resolveString(arg, resolvedArg);
+      console.log(
+        `Arg is string, resolving string ${this.resolveString(
+          context,
+          arg,
+          resolvedArg
+        )}`
+      );
+      return this.resolveString(context, arg, resolvedArg);
     }
 
     if (Array.isArray(resolvedArg)) {
@@ -41,7 +53,16 @@ class TFExpression extends Intrinsic implements IResolvable {
       .replace(/\${/g, "$$${"); // escape ${ to $${
   }
 
-  private resolveString(str: string, resolvedArg: any) {
+  private resolveString(
+    context: IResolveContext,
+    str: string,
+    resolvedArg: any
+  ) {
+    console.log(
+      `ResolveString called with ${str} and  resolvedArg ${resolvedArg}, in ${
+        context.inTerraformExpression ? "in TFE" : "not in TFE"
+      }`
+    );
     const tokenList = Tokenization.reverseString(str);
     const numberOfTokens = tokenList.tokens.length + tokenList.intrinsic.length;
 
@@ -79,6 +100,21 @@ class TFExpression extends Intrinsic implements IResolvable {
       },
     })}"`;
   }
+
+  public resolveExpr(context: IResolveContext, tfExpression: string) {
+    console.log(
+      `resolveExpr called with ${tfExpression} ${
+        context.inTerraformExpression ? "in TFE" : "not in TFE"
+      }`
+    );
+    return this.isInsideTerraformExpression(context)
+      ? tfExpression
+      : `\${${tfExpression}}`;
+  }
+
+  public isInsideTerraformExpression(context: IResolveContext) {
+    return context.inTerraformExpression;
+  }
 }
 
 // A string that represents an input value to be escaped
@@ -87,8 +123,8 @@ class RawString extends TFExpression {
     super(str);
   }
 
-  public resolve() {
-    const qts = this.isInnerTerraformExpression ? `"` : ``;
+  public resolve(context: IResolveContext) {
+    const qts = this.isInsideTerraformExpression(context) ? `"` : ``;
     return `${qts}${this.escapeString(this.str).replace(/\"/g, '\\"')}${qts}`; // eslint-disable-line no-useless-escape
   }
 
@@ -103,14 +139,8 @@ export function rawString(str: string): IResolvable {
 
 class Reference extends TFExpression {
   private crossStackIdentifier: Record<string, string> = {};
-  constructor(
-    private identifier: string,
-    private originStack: TerraformStack,
-    markAsInner: boolean
-  ) {
+  constructor(private identifier: string, private originStack: TerraformStack) {
     super(identifier);
-
-    this.isInnerTerraformExpression = markAsInner;
   }
 
   private referenceIdentifier(stackName: string): string {
@@ -118,6 +148,11 @@ class Reference extends TFExpression {
   }
 
   public resolve(context: IResolveContext): string {
+    console.log(
+      `Reference resolve called for ${this.identifier} with context ${
+        context.inTerraformExpression ? "in TFE" : "not in TFE"
+      }`
+    );
     // We check for cross stack references on preparation, setting a new identifier
     const resolutionStack = TerraformStack.of(context.scope);
 
@@ -131,50 +166,15 @@ class Reference extends TFExpression {
             resolutionStack,
             this.identifier
           );
-
-        // markAsInner(this.crossStackIdentifier[resolutionStack.toString()]);
       }
     }
 
     const identifier = this.referenceIdentifier(resolutionStack.toString());
-    return this.isInnerTerraformExpression ? identifier : `\${${identifier}}`;
+    return this.resolveExpr(context, identifier);
   }
 }
-export function ref(
-  identifier: string,
-  stack: TerraformStack,
-  markAsInner = false
-): IResolvable {
-  return new Reference(identifier, stack, markAsInner);
-}
-
-function markAsInner(arg: any) {
-  if (arg instanceof TFExpression) {
-    arg.isInnerTerraformExpression = true;
-    return;
-  }
-
-  // reverese tokens here and set inner tf expression flag
-  Tokenization.reverse(arg).map((resolvable) => {
-    if (resolvable instanceof TFExpression) {
-      resolvable.isInnerTerraformExpression = true;
-    } else if (resolvable instanceof LazyBase) {
-      resolvable.addPostProcessor({
-        postProcess: (value) => {
-          markAsInner(value);
-          return value;
-        },
-      });
-    }
-  });
-
-  if (typeof arg === "object") {
-    if (Array.isArray(arg)) {
-      arg.forEach(markAsInner);
-    } else {
-      Object.keys(arg).forEach((key) => markAsInner(arg[key]));
-    }
-  }
+export function ref(identifier: string, stack: TerraformStack): IResolvable {
+  return new Reference(identifier, stack);
 }
 
 class PropertyAccess extends TFExpression {
@@ -183,17 +183,15 @@ class PropertyAccess extends TFExpression {
   }
 
   public resolve(context: IResolveContext): string {
-    markAsInner(this.target);
-    this.args.forEach(markAsInner);
-
+    const insideContext = context.extend({ inTerraformExpression: true });
     const serializedArgs = this.args
-      .map((arg) => this.resolveArg(context, arg))
+      .map((arg) => this.resolveArg(insideContext, arg))
       .map((a) => `[${a}]`) // property access
       .join("");
 
-    const expr = `${this.target}${serializedArgs}`;
+    const expr = `${insideContext.resolve(this.target)}${serializedArgs}`;
 
-    return this.isInnerTerraformExpression ? expr : `\${${expr}}`;
+    return this.resolveExpr(context, expr);
   }
 }
 
@@ -211,17 +209,14 @@ class ConditionalExpression extends TFExpression {
   }
 
   public resolve(context: IResolveContext): string {
-    markAsInner(this.condition);
-    markAsInner(this.trueValue);
-    markAsInner(this.falseValue);
-
-    const condition = this.resolveArg(context, this.condition);
-    const trueValue = this.resolveArg(context, this.trueValue);
-    const falseValue = this.resolveArg(context, this.falseValue);
+    const insideContext = context.extend({ inTerraformExpression: true });
+    const condition = this.resolveArg(insideContext, this.condition);
+    const trueValue = this.resolveArg(insideContext, this.trueValue);
+    const falseValue = this.resolveArg(insideContext, this.falseValue);
 
     const expr = `${condition} ? ${trueValue} : ${falseValue}`;
 
-    return this.isInnerTerraformExpression ? expr : `\${${expr}}`;
+    return this.resolveExpr(context, expr);
   }
 }
 
@@ -262,10 +257,11 @@ class OperatorExpression extends TFExpression {
   }
 
   public resolve(context: IResolveContext): string {
-    markAsInner(this.left);
-    if (this.right) markAsInner(this.right);
-    const left = this.resolveArg(context, this.left);
-    const right = this.right ? this.resolveArg(context, this.right) : undefined;
+    const insideContext = context.extend({ inTerraformExpression: true });
+    const left = this.resolveArg(insideContext, this.left);
+    const right = this.right
+      ? this.resolveArg(insideContext, this.right)
+      : undefined;
 
     let expr = "";
     switch (this.operator) {
@@ -288,7 +284,7 @@ class OperatorExpression extends TFExpression {
       }
     }
 
-    return this.isInnerTerraformExpression ? expr : `\${${expr}}`;
+    return this.resolveExpr(context, expr);
   }
 }
 
@@ -357,15 +353,15 @@ class FunctionCall extends TFExpression {
   }
 
   public resolve(context: IResolveContext): string {
-    this.args.forEach(markAsInner);
-
     const serializedArgs = this.args
-      .map((arg) => this.resolveArg(context, arg))
+      .map((arg) =>
+        this.resolveArg(context.extend({ inTerraformExpression: true }), arg)
+      )
       .join(", ");
 
     const expr = `${this.name}(${serializedArgs})`;
 
-    return this.isInnerTerraformExpression ? expr : `\${${expr}}`;
+    return this.resolveExpr(context, expr);
   }
 }
 export function call(name: string, args: Expression[]) {

@@ -148,6 +148,7 @@ export class Tokenization {
       scope: options.scope,
       resolver: options.resolver,
       preparing: options.preparing !== undefined ? options.preparing : false,
+      inTerraformExpression: options.inTerraformExpression || false,
     });
   }
 
@@ -209,6 +210,15 @@ export interface ResolveOptions {
    * @default false
    */
   readonly preparing?: boolean;
+
+  /**
+   * Whether the token to be resolved is within a terraform expression
+   *
+   * "${TOKEN}" | ${length(${token})} => true
+   * "TOKEN" | ["TOKEN"] => false
+   * @default false
+   */
+  readonly inTerraformExpression?: boolean;
 }
 
 /**
